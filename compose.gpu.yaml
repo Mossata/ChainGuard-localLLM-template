@@ -1,0 +1,4 @@
+# Optional NVIDIA acceleration, when your Docker installation supports it.
+services:
+  ollama:
+    gpus: all

@@ -1,0 +1,10 @@
+# Apply alongside ChainGuard's existing Compose file; no edits to that file needed.
+services:
+  backend:
+    networks:
+      - default
+      - local_llm
+networks:
+  local_llm:
+    external: true
+    name: chainguard-local-llm-shared

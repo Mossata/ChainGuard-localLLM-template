@@ -1,0 +1,34 @@
+name: chainguard-local-llm
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - models:/root/.ollama
+  llm:
+    build: .
+    restart: unless-stopped
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
+      LLM_CONTEXT_TOKENS: ${LLM_CONTEXT_TOKENS:-16384}
+    ports:
+      - "127.0.0.1:9010:9010"
+    depends_on:
+      - ollama
+    networks:
+      default:
+      shared:
+        aliases:
+          - chainguard-local-llm
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9010/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+volumes:
+  models:
+networks:
+  shared:
+    name: chainguard-local-llm-shared
