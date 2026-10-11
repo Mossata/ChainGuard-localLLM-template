@@ -4,7 +4,7 @@ Run a language model on your own computer and make it available to ChainGuard. N
 
 Two programs run together: **Ollama** loads the downloaded model and generates answers; the **hosting app** accepts requests in the format ChainGuard expects. Docker starts both for you. A model is a set of downloaded files, rather than a cloud API subscription.
 
-**Current integration status:** this repository supplies the server. ChainGuard still needs its fourth provider and agent-assignment settings implemented. Starting this server does not switch ChainGuard's existing provider. The networking steps below prepare the connection; they do not add the missing provider or UI.
+**ChainGuard integration:** sign in to ChainGuard as an admin and open Settings → Local LLM Connection. Configure, enable and save this server, then choose Local Hosted LLM for the desired agents under AI Configuration. Starting the server alone does not switch ChainGuard's providers.
 
 ## First-time setup
 
@@ -84,7 +84,7 @@ docker compose -f docker-compose.yml -f ../ChainGuard-localLLM-template/chaingua
 
 This assumes ChainGuard's backend service is called `backend`. Adjust the relative folder path if you have moved any folders elsewhere.
 
-Once ChainGuard's local-provider settings are implemented, enter:
+In ChainGuard's Local LLM Connection page, enter:
 
 | Setting | Value |
 | --- | --- |
@@ -153,7 +153,7 @@ Use the same file options for later hosting commands. GPU support depends on you
 | JSON format failed | Try a stronger model. Invalid structured answers are rejected. |
 | Shared network not found | Start the hosting app before ChainGuard. |
 | Browser works but ChainGuard cannot connect | Use the extra network file and Docker address, not `localhost`. |
-| ChainGuard still uses a cloud provider | Its local-provider adapter and selection UI need to be implemented and selected separately. |
+| ChainGuard still uses a cloud provider | Sign in as admin, configure and enable the connection under Local LLM Connection, then select it for the desired agents in AI Configuration and save. |
 
 ## API and development
 
