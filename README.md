@@ -1,169 +1,202 @@
-# ChainGuard local model hosting
+﻿# ChainGuard local LLM hosting template
 
-Run a language model on your own computer and make it available to ChainGuard. No Python installation or programming is needed for the Docker setup.
+Run an AI language model on your computer and connect it to ChainGuard's agents. **Ollama** loads a downloaded model and generates answers. This template's **hosting service** accepts the OpenAI-compatible requests ChainGuard expects and forwards them to Ollama. Docker starts both services for you.
 
-Two programs run together: **Ollama** loads the downloaded model and generates answers; the **hosting app** accepts requests in the format ChainGuard expects. Docker starts both for you. A model is a set of downloaded files, rather than a cloud API subscription.
+This is separate from the [external detector template](../ChainGuard-detector-template/README.md). A local **LLM** (large language model) generates the agents' answers; an external detector runs a separate risk-assessment algorithm. You can use both together.
 
-**ChainGuard integration:** sign in to ChainGuard as an admin and open Settings → Local LLM Connection. Configure, enable and save this server, then choose Local Hosted LLM for the desired agents under AI Configuration. Starting the server alone does not switch ChainGuard's providers.
+Starting this server does not automatically switch ChainGuard to local AI. You must save its connection and assign it to agents in ChainGuard's settings.
 
-## First-time setup
+## What you need
 
-### 1. Open Docker Desktop
+- Docker Desktop running (Linux containers on Windows), or Docker Engine with the Compose plugin on Linux.
+- This complete repository and a running ChainGuard app. Follow the [main app setup guide](../ChainGuard/README.md) first; cloud AI keys are optional if all agents will use the local model.
+- Internet access for initial installation/model downloads, disk space for downloaded models, and memory for Docker plus inference. CPU generation is supported but can be slow; a dedicated GPU is optional.
 
-Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if needed. Open it and wait until the engine is running. On Windows, use Linux containers, as with ChainGuard.
+No separate Python installation or programming is needed for the Docker guide. Local model generation does not require a cloud AI subscription, but ChainGuard's blockchain lookups still contact external services and need their own keys where required.
 
-Keep this downloaded repository beside ChainGuard. E.g. directory setup:
+An **API base URL** is the address programs use to reach the hosting service. A **model name** identifies downloaded model files and must match exactly. A **container** is an isolated process managed by Docker; `localhost` inside one refers to that container itself.
+
+Commands use Windows PowerShell. On macOS/Linux, use `cp` instead of `Copy-Item` and `curl` instead of `curl.exe`.
+
+## 1. Download and start the server
+
+Keep the repository beside ChainGuard. From their parent folder:
+
+```powershell
+git clone https://github.com/Mossata/ChainGuard-localLLM-template.git
+cd ChainGuard-localLLM-template
+docker compose up -d --build
+```
+
+If you already have the repository, open a terminal in that folder and run only the startup command. The intended layout is:
 
 ```text
 ProjectFiles/
   ChainGuard/
+  ChainGuard-detector-template/   (used by ChainGuard's standard Compose setup)
   ChainGuard-localLLM-template/
 ```
 
-### 2. Open a terminal in the hosting folder
+The first run downloads Ollama and builds the hosting service. `-d` keeps them running when the terminal closes. **A model is not included yet.**
 
-On Windows, open `ChainGuard-localLLM-template` in File Explorer. Click the address bar, type `powershell`, and press Enter. A terminal is a window where you enter commands. Paste each command below and press Enter.
+## 2. Download a model
 
-### 3. Start the server
-
-```powershell
-docker compose up -d --build
-```
-
-The first run downloads the programs and builds the hosting app. `-d` means they continue running after you close the terminal. You still need to download a model once.
-
-### 4. Download a model
-
-For a small first example:
+From `ChainGuard-localLLM-template/`:
 
 ```powershell
 docker compose exec ollama ollama pull llama3.2:3b
+docker compose exec ollama ollama list
 ```
 
-Wait until the download finishes. Internet access is needed for installation and downloads. Afterwards, this server generates answers locally without a cloud LLM service. ChainGuard's blockchain lookups still need internet access.
+Wait for the download to finish and confirm `llama3.2:3b` appears in the list. It is a small starting example, not a guarantee of accurate blockchain analysis or valid structured answers. Try a more capable model if routing or evidence analysis fails, allowing for its memory and storage requirements.
 
-The example download is about 2 GB. Allow extra disk space and memory for Docker and the running model. No dedicated graphics card is required, although answers may be slow. This model is a setup example, not a guarantee of accurate ChainGuard analysis. Try a stronger model if it struggles with routing or evidence analysis.
+To install another model, replace `llama3.2:3b` in the pull command with its Ollama model name. Use the exact installed name in ChainGuard. Different agents can request different installed model names through the server, although ChainGuard's current connection form selects one shared local model.
 
-### 5. Check that it works
+## 3. Verify readiness and generation
 
-Open **http://localhost:9010/ready** in your browser. You should see `"status":"ready"` and `llama3.2:3b` in the list. This checks that a model is installed; it does not generate an answer.
+Open **http://localhost:9010/ready**. With the default configuration, expect `"status":"ready"` and a list containing the model.
 
-To generate an answer, open **http://localhost:9010/docs**:
+Readiness checks that Ollama is reachable and has a model. To test actual generation:
 
-1. Expand `POST /v1/chat/completions`.
-2. Click **Try it out**.
-3. Replace the example with the following text.
-4. Click **Execute** and wait.
+1. Open **http://localhost:9010/docs**.
+2. Expand **POST /v1/chat/completions** and click **Try it out**.
+3. Replace the request with the JSON below.
+4. Click **Execute** and wait for the answer in `choices[0].message.content`.
 
 ```json
 {
   "model": "llama3.2:3b",
-  "messages": [{"role": "user", "content": "Explain a blockchain in one sentence."}],
+  "messages": [
+    {"role": "user", "content": "Explain a blockchain in one sentence."}
+  ],
   "max_tokens": 100,
   "stream": false
 }
 ```
 
-The answer appears inside `choices`, then `message`, then `content`. The first answer can be slower because the model must load into memory.
+The first request may take longer while the model loads. `/health` only checks that the hosting process is alive; it does not check Ollama or generate an answer.
 
-## Connect ChainGuard's Docker containers
+## 4. Connect ChainGuard
 
-Docker gives each application its own private network. The included extra settings file connects ChainGuard's backend to the model server's network without editing ChainGuard files. It works with Docker Desktop and Linux Docker.
+### If ChainGuard runs in Docker
 
-Keep the hosting app running. Open a terminal in the **ChainGuard** folder and run:
+Start this hosting stack first so its shared network exists. Then, from `ChainGuard/`:
 
 ```powershell
 docker compose -f docker-compose.yml -f ../ChainGuard-localLLM-template/chainguard-network.yaml up -d --build
 ```
 
-Use the same two `-f` options for later ChainGuard commands. To stop ChainGuard:
+The second file connects ChainGuard's backend to the hosting network. Use the same two `-f` options for later ChainGuard commands, including `up`, `ps`, `logs`, and `down`. This does not replace ChainGuard's normal detector-repository requirement.
+
+### Enter the connection details
+
+Sign in to ChainGuard as **admin**. The supplied ChainGuard Docker setup uses username `admin` and password `ChainGuard123!`; native installations use the account values set in their backend terminal.
+
+Open **Settings > Local LLM Connection**:
+
+| Field | Value |
+| --- | --- |
+| Connection name | `My local Llama`, or another descriptive name |
+| API base URL | Choose from the table below; include `/v1` |
+| Model name | `llama3.2:3b`, or the exact name from `ollama list` |
+| Optional API key | Leave empty with this template's defaults |
+| Timeout (seconds) | `300` to start with |
+
+| Setup | Base URL seen by ChainGuard's backend |
+| --- | --- |
+| Both stacks in Docker, connected using the override above | `http://chainguard-local-llm:9010/v1` |
+| Native ChainGuard, hosting stack in Docker on the same computer | `http://localhost:9010/v1` |
+| Both services running natively on the same computer | `http://localhost:9010/v1` |
+| Docker ChainGuard, hosting service running directly on the host | `http://host.docker.internal:9010/v1` (server must accept Docker connections) |
+
+Do not use `/docs`, `/ready`, or `/v1/chat/completions` as the base URL.
+
+Click **Test Connection**, turn on **Enable local LLM**, then click **Save Connection**. Saving an enabled connection checks the installed model and generates a small structured JSON answer. A failed check leaves the previous saved settings intact.
+
+### Assign the agents
+
+Open **Settings > AI Configuration**, choose **Local Hosted LLM** for the Business Analyser, Scam Checker, and Forensic Investigator, then click **Save Agent Providers**. You can mix local and cloud providers if the cloud keys are configured. Settings affect future messages for all users; a running response keeps its original settings.
+
+Ask **"What is a smart contract?"** to test the connection through ChainGuard. Then try an Ethereum address lookup with a configured Etherscan key. To exercise the local **Scam Checker**, disable the external detector under **Settings > External Detector**, save, and confirm. With an external detector enabled, that service handles scam assessments instead; the AI agents still interpret requests and explain evidence as applicable.
+
+There is no automatic fallback to a cloud model when local generation fails. A successful connection test does not guarantee every later model response will meet ChainGuard's schemas or be accurate.
+
+## Optional server settings
+
+From this template folder:
 
 ```powershell
-docker compose -f docker-compose.yml -f ../ChainGuard-localLLM-template/chainguard-network.yaml down
+Copy-Item .env.example .env
 ```
 
-This assumes ChainGuard's backend service is called `backend`. Adjust the relative folder path if you have moved any folders elsewhere.
+Edit the new `.env` file and apply changes with `docker compose up -d`.
 
-In ChainGuard's Local LLM Connection page, enter:
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LLM_API_KEY` | Empty | Optional bearer secret for `/ready` and `/v1/*`. Enter the same value in ChainGuard's Optional API key field. |
+| `LLM_TIMEOUT_SECONDS` | `300` | How long the hosting service waits for Ollama. Increase ChainGuard's connection timeout too when allowing slower generation. |
+| `LLM_CONTEXT_TOKENS` | `16384` | Context window requested from Ollama: space for input and output tokens. Increasing it can use more memory; model limits still apply. |
 
-| Setting | Value |
-| --- | --- |
-| Provider | OpenAI-compatible / Local model |
-| Base URL | `http://chainguard-local-llm:9010/v1` |
-| Model | `llama3.2:3b` |
-| API key | Leave empty unless you set one below |
-| Request timeout | At least 300 seconds for the initial CPU setup |
+A **token** is a unit of model text. Large evidence bundles may need more context space, while output token limits independently cap generated answers. Raising the context window does not make a model more accurate.
 
-Assign this backend to the Business Analyser, Scam Checker, and/or Forensic Investigator.
+Keys remain on the server and in local configuration files. Do not commit `.env` with secrets. This bearer key is separate from Etherscan keys, cloud AI keys, and `DETECTOR_API_KEY`.
 
-**Why two addresses?** Your browser uses `http://localhost:9010`. ChainGuard's backend uses `http://chainguard-local-llm:9010/v1` on the shared Docker network. Inside ChainGuard's container, `localhost` means ChainGuard's container itself, so it is the wrong address for this separate model server.
+### Test with authentication enabled
 
-To check that ChainGuard can reach it, run this in the ChainGuard folder after starting both apps:
+When `LLM_API_KEY` is set, opening `/ready` directly in a browser returns 401 because it has no authorization header. Test with:
 
 ```powershell
-docker compose -f docker-compose.yml -f ../ChainGuard-localLLM-template/chainguard-network.yaml exec backend python -c "import urllib.request; print(urllib.request.urlopen('http://chainguard-local-llm:9010/ready').read().decode())"
+curl.exe http://localhost:9010/ready -H "Authorization: Bearer YOUR_SECRET"
 ```
 
-This checks connectivity only; it does not select a model provider.
+Replace `YOUR_SECRET` with your configured value. `/health` remains public. The interactive `/docs` form does not configure this bearer header; use an API client for authenticated generation tests or ChainGuard's connection test.
 
-## Everyday use
+### Optional NVIDIA GPU acceleration
 
-Run these commands in the hosting app folder:
-
-| What you want | Command |
-| --- | --- |
-| Start again | `docker compose up -d` |
-| Stop | `docker compose stop` |
-| See status | `docker compose ps` |
-| See errors | `docker compose logs --tail=100` |
-| List installed models | `docker compose exec ollama ollama list` |
-| Download another model | `docker compose exec ollama ollama pull MODEL_NAME` |
-
-Replace `MODEL_NAME` with a name from [Ollama's library](https://ollama.com/library). Use the exact installed name in ChainGuard. Different agents can request different installed models from the same server.
-
-Downloaded models are saved in a Docker volume. Stopping or restarting preserves them. **`docker compose down -v` deletes the saved models**, so only use it if you intend to remove them.
-
-## Optional settings
-
-Copy `.env.example` to a file called `.env` in this folder. Edit it with a text editor and apply changes with `docker compose up -d`.
-
-- `LLM_TIMEOUT_SECONDS`: time allowed for generating an answer; default 300 seconds.
-- `LLM_CONTEXT_TOKENS`: amount of input and output the model can work with at once; default 16384. Increasing this can use more memory. Large ChainGuard evidence bundles may need a higher value or a smaller input. Model limits still apply.
-- `LLM_API_KEY`: optional password for model requests. Leave empty for the default local setup. If set, use the same value in ChainGuard; requests need an `Authorization: Bearer YOUR_KEY` header. `/ready` also requires it; `/health` stays public. The interactive documentation form does not configure this header, so use an API client for authenticated tests.
-
-### NVIDIA graphics card acceleration
-
-The default runs on your processor (CPU). If Docker already has access to a supported NVIDIA graphics card and your Compose version supports `gpus`, run:
+If Docker already has access to a supported NVIDIA GPU and your Compose version supports `gpus`, start the template with:
 
 ```powershell
 docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 ```
 
-Use the same file options for later hosting commands. GPU support depends on your drivers and Docker setup; see [Ollama's Docker instructions](https://docs.ollama.com/docker). GPU configuration is optional.
+Use the same two file options for later commands **in this template folder**. These differ from the two files used for ChainGuard's shared-network connection. GPU drivers and Docker GPU access must be configured separately; the default CPU setup needs no GPU override.
+
+## Stop, restart, and update
+
+From `ChainGuard-localLLM-template/` (include the GPU override if using it):
+
+```powershell
+docker compose ps
+docker compose logs --tail 100 llm ollama
+docker compose down
+docker compose up -d
+docker compose up -d --build
+```
+
+These commands show service status, show logs, stop the stack, start it again, and rebuild/start after hosting code or dependency changes. Models are saved in the `models` Docker volume and survive normal stops/restarts. **`docker compose down -v` deletes that stack's saved models.** Download another model with `ollama pull`; restarting alone does not install one.
+
+ChainGuard stores its enabled connection and agent assignments separately in its own settings file/data volume. Stopping this hosting stack leaves those assignments selected, so local AI requests fail until it is restarted or you change providers.
 
 ## Troubleshooting
 
-| Problem | What to do |
+| Problem | What to check |
 | --- | --- |
-| Cannot connect to Docker | Open Docker Desktop and wait for its engine. |
-| Port 9010 already in use | Stop the other program, or change the left-hand port in `compose.yaml`. The internal Docker address still uses 9010. |
-| No models installed | Run the download command in step 4. |
-| Model not found | List installed models and copy the exact name. |
-| Answers take too long | Increase both the hosting and ChainGuard timeouts, or try a smaller model. |
-| JSON format failed | Try a stronger model. Invalid structured answers are rejected. |
-| Shared network not found | Start the hosting app before ChainGuard. |
-| Browser works but ChainGuard cannot connect | Use the extra network file and Docker address, not `localhost`. |
-| ChainGuard still uses a cloud provider | Sign in as admin, configure and enable the connection under Local LLM Connection, then select it for the desired agents in AI Configuration and save. |
+| Cannot connect to Docker | Start Docker Desktop and wait for its engine. |
+| Port 9010 in use | Stop the other process or change the left-hand published port in `compose.yaml`. The internal shared-network URL still uses 9010. |
+| `/ready` reports no models | Run `docker compose exec ollama ollama pull llama3.2:3b` and wait. |
+| Model not found | Run `docker compose exec ollama ollama list` and copy the exact name into ChainGuard. |
+| `/health` works but `/ready` fails | Inspect Ollama logs and installed models; liveness alone does not establish readiness. |
+| 401 | Match `LLM_API_KEY` with ChainGuard's saved key or the client's bearer header. |
+| Shared network not found | Start this template before starting ChainGuard with its override. |
+| Browser connects but ChainGuard cannot | Use the backend-visible URL and shared-network file; `localhost` inside Docker points to the caller's container. |
+| Generation too slow / 504 | Try a smaller model, optional GPU acceleration, or longer timeouts on both sides. |
+| Invalid JSON / schema mismatch | Try a more capable model; malformed structured output is rejected. |
+| Local option unavailable / cloud still used | Enable and save the connection, then assign Local Hosted LLM to the desired agents and save. |
+| Scam Checker appears unused | An enabled external detector handles scam assessment; disable it to use the built-in AI assessment. |
 
-## API and development
+## Testing and native development
 
-This server supports `GET /v1/models` and non-streaming `POST /v1/chat/completions`. It accepts text system/user/assistant messages, temperature, max_tokens, and text/JSON-object/JSON-schema response formats. Streaming, images, tools, and other request fields are rejected. There is no automatic cloud fallback.
-
-JSON schemas are passed to Ollama and returned JSON is validated against them. ChainGuard must still validate its agent contracts. Output stopped by the token limit returns `finish_reason: length` so ChainGuard can reject incomplete results.
-
-`/health` checks the hosting app. `/ready` checks Ollama and downloaded models. An actual chat request checks generation. Ollama's port is not published. The app's published port is bound to `127.0.0.1`, available locally and through the shared Docker network rather than exposed to the home network.
-
-For non-Docker development, install Python 3.12+ and run Ollama separately:
+The Docker guide is the supported first-time path. For development without Docker, install Python 3.12 and run Ollama separately on the same computer with a model already downloaded. From this repository:
 
 ```powershell
 python -m venv .venv
@@ -171,13 +204,35 @@ python -m venv .venv
 .venv\Scripts\python -m uvicorn app:app --host 127.0.0.1 --port 9010
 ```
 
-This expects Ollama at `http://localhost:11434` unless `OLLAMA_BASE_URL` is set. The shared-network instructions apply to the recommended Docker setup.
+The default Ollama URL is `http://localhost:11434`. Set `OLLAMA_BASE_URL` in the server terminal before startup if needed. Native runs do not automatically load `.env`; set `LLM_API_KEY`, timeout, and context variables in that terminal too. PowerShell uses `$env:NAME = "value"`; macOS/Linux uses `export NAME='value'` and `.venv/bin/python`.
 
-Tests simulate Ollama without downloading a model:
+Tests simulate Ollama, so no downloaded model or live server is required:
 
 ```powershell
-python -m pip install -r requirements-dev.txt
-python -m pytest -q
+.venv\Scripts\python -m pip install -r requirements-dev.txt
+.venv\Scripts\python -m pytest -q
 ```
 
-References: [Ollama chat API](https://docs.ollama.com/api/chat), [model listing](https://docs.ollama.com/api/tags), [Docker networking](https://docs.docker.com/compose/how-tos/networking/), [example model](https://ollama.com/library/llama3.2).
+Use readiness, a generation request, and a ChainGuard chat to verify an actual deployment; mocked tests do not validate a model's analysis quality.
+
+## Architecture and API reference
+
+```text
+ChainGuard backend -> hosting service (:9010) -> Ollama -> downloaded model
+                       OpenAI-compatible        /api/chat
+                       /v1 endpoints            /api/tags
+```
+
+`compose.yaml` starts `llm` and `ollama`, persists model files, and creates the `chainguard-local-llm-shared` network. The hosting service's shared alias is `chainguard-local-llm`. Only port 9010 is published, bound to `127.0.0.1`; Ollama's port is not published. This is a local setup, not a complete public hosting configuration.
+
+| Route | Behavior |
+| --- | --- |
+| `GET /health` | Hosting process liveness; always public. |
+| `GET /ready` | Checks Ollama and requires at least one installed model. |
+| `GET /v1/models` | OpenAI-compatible installed model list. |
+| `POST /v1/chat/completions` | Non-streaming text generation. |
+| `GET /docs` | Interactive request documentation. |
+
+Chat requests accept `model`, text `messages` with system/user/assistant roles, `temperature`, `max_tokens`, `stream: false`, and `response_format` (`text`, `json_object`, or `json_schema`). Streaming, images, tools, and unsupported request fields are rejected. This is a limited compatibility layer, not the full OpenAI API.
+
+JSON schemas are passed to Ollama and returned JSON is validated when generation completes normally. Output stopped by the token limit returns `finish_reason: length`; the caller must handle incomplete answers. ChainGuard also validates its own agent contracts. Request errors return 400, authentication failures 401, missing models 404, unavailable Ollama 503, timeouts 504, and other upstream/invalid-output failures 502.
